@@ -4,6 +4,12 @@
 
 QSearch Lab is a Python-based educational project that lets users configure a search problem, simulate Grover's algorithm, inspect measurement probabilities and circuit structure, and explore how theoretical query complexity scales as the search space grows.
 
+## 🚀 Live Demo
+
+Try QSearch Lab here:
+
+https://qsearch-lab.streamlit.app/
+
 ## ✨ Features
 
 - **Interactive experiment configuration** — choose the number of qubits, target state, and measurement shots.
