@@ -40,3 +40,26 @@ def test_invalid_qubit_count_raises_error():
             target=0,
             num_qubits=0
         )
+
+def test_grover_search_accepts_noise_probability():
+    result = grover_search(
+        target=7,
+        num_qubits=4,
+        shots=1024,
+        noise_probability=0.05,
+    )
+
+    assert result["noise_probability"] == 0.05
+    assert 0.0 <= result["target_probability"] <= 1.0
+
+
+def test_grover_search_rejects_invalid_noise_probability():
+    import pytest
+
+    with pytest.raises(ValueError):
+        grover_search(
+            target=7,
+            num_qubits=4,
+            shots=1024,
+            noise_probability=1.5,
+        )

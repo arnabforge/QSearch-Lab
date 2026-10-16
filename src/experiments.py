@@ -8,20 +8,38 @@ def compare_search_algorithms(
     num_qubits: int = 4,
     target: int = 7,
     shots: int = 1024,
+    noise_probability: float = 0.0,
 ) -> dict:
     """
     Compare classical linear search with Grover's quantum search.
 
-    Runtime measurements include the work performed by each
-    implementation, so they should not be interpreted as a
-    direct comparison of classical and quantum hardware speed.
+    Args:
+        num_qubits: Number of qubits in the search circuit.
+        target: Integer representing the target state.
+        shots: Number of measurement repetitions.
+        noise_probability: Depolarizing gate-error probability
+            between 0 and 1. Defaults to 0.0 (ideal simulation).
+
+    Returns:
+        Dictionary containing classical and quantum search results.
+
+    Note:
+        Runtime measurements include the work performed by each
+        implementation. They should not be interpreted as a direct
+        comparison of classical and quantum hardware speed.
     """
 
+    # Validate inputs.
     if num_qubits < 1:
         raise ValueError("num_qubits must be at least 1.")
 
     if shots < 1:
         raise ValueError("shots must be at least 1.")
+
+    if not 0.0 <= noise_probability <= 1.0:
+        raise ValueError(
+            "noise_probability must be between 0 and 1."
+        )
 
     num_states = 2**num_qubits
 
@@ -47,10 +65,12 @@ def compare_search_algorithms(
         target=target,
         num_qubits=num_qubits,
         shots=shots,
+        noise_probability=noise_probability,
     )
 
     quantum_time = perf_counter() - start_time
 
+    # Return comparison results.
     return {
         "num_states": num_states,
         "target": target,
@@ -65,5 +85,6 @@ def compare_search_algorithms(
             "gate_count": quantum_result["gate_count"],
             "runtime_seconds": quantum_time,
             "measurement_counts": quantum_result["counts"],
+            "noise_probability": quantum_result["noise_probability"],
         },
     }

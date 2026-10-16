@@ -25,9 +25,7 @@ st.set_page_config(
 
 st.title("⚛️ QSearch Lab")
 
-st.subheader(
-    "Quantum vs Classical Search Performance Analysis"
-)
+st.subheader("Quantum vs Classical Search Performance Analysis")
 
 st.markdown(
     """
@@ -70,6 +68,26 @@ shots = st.sidebar.select_slider(
     value=1024,
 )
 
+noise_probability = st.sidebar.select_slider(
+    "Depolarizing Noise Probability",
+    options=[
+        0.0,
+        0.001,
+        0.005,
+        0.01,
+        0.02,
+        0.05,
+        0.1,
+    ],
+    value=0.0,
+    format_func=lambda value: f"{value:.1%}",
+)
+
+st.sidebar.caption(
+    "This setting controls the simulated single-qubit "
+    "gate-error probability. It is not a hardware noise measurement."
+)
+
 st.sidebar.info(
     f"Search space: {num_states} states\n\n"
     f"Binary target: {format(target, f'0{num_qubits}b')}"
@@ -87,40 +105,47 @@ run_experiment = st.sidebar.button(
 # ==========================================================
 
 if run_experiment:
-
     try:
-        with st.spinner("Running quantum search simulation..."):
+        with st.spinner("Running quantum search simulations..."):
 
-            # Run the classical and quantum comparison.
+            # Classical-versus-quantum comparison.
             results = compare_search_algorithms(
                 num_qubits=num_qubits,
                 target=target,
                 shots=shots,
+                noise_probability=noise_probability,
             )
 
-            # Generate the quantum circuit details.
+            # Obtain the circuit and detailed measurement results.
             quantum_details = grover_search(
                 target=target,
                 num_qubits=num_qubits,
                 shots=shots,
+                noise_probability=noise_probability,
             )
 
-            # Store results for subsequent Streamlit reruns.
+            # Run an ideal baseline using the same configuration.
+            ideal_details = grover_search(
+                target=target,
+                num_qubits=num_qubits,
+                shots=shots,
+                noise_probability=0.0,
+            )
+
             st.session_state["results"] = results
             st.session_state["quantum_details"] = quantum_details
+            st.session_state["ideal_details"] = ideal_details
 
-            # Store the configuration associated with these results.
             st.session_state["experiment_config"] = {
                 "num_qubits": num_qubits,
                 "num_states": num_states,
                 "target": target,
                 "shots": shots,
+                "noise_probability": noise_probability,
             }
 
     except Exception as error:
-        st.error(
-            f"Experiment failed: {error}"
-        )
+        st.error(f"Experiment failed: {error}")
 
 
 # ==========================================================
@@ -131,25 +156,25 @@ if "results" in st.session_state:
 
     results = st.session_state["results"]
     quantum_details = st.session_state["quantum_details"]
+    ideal_details = st.session_state["ideal_details"]
     config = st.session_state["experiment_config"]
 
     classical = results["classical"]
     quantum = results["quantum"]
 
-    # Use the configuration from the actual experiment.
-    # This prevents the chart from mixing old results with
-    # newly selected sidebar settings.
     experiment_target = config["target"]
     experiment_qubits = config["num_qubits"]
     experiment_states = config["num_states"]
     experiment_shots = config["shots"]
+    experiment_noise = config["noise_probability"]
 
     st.success("Experiment completed successfully!")
 
     st.caption(
         f"Showing results for {experiment_qubits} qubits, "
         f"{experiment_states} states, target {experiment_target}, "
-        f"and {experiment_shots} measurement shots."
+        f"{experiment_shots} shots, and "
+        f"{experiment_noise:.1%} noise probability."
     )
 
     # ------------------------------------------------------
@@ -160,23 +185,11 @@ if "results" in st.session_state:
 
     col1, col2, col3, col4 = st.columns(4)
 
-    col1.metric(
-        "Search Space",
-        f"{results['num_states']} states",
-    )
-
-    col2.metric(
-        "Classical Comparisons",
-        classical["comparisons"],
-    )
-
-    col3.metric(
-        "Grover Iterations",
-        quantum["iterations"],
-    )
-
+    col1.metric("Search Space", f"{results['num_states']} states")
+    col2.metric("Classical Comparisons", classical["comparisons"])
+    col3.metric("Grover Iterations", quantum["iterations"])
     col4.metric(
-        "Target Probability",
+        "Noisy Target Probability",
         f"{quantum['target_probability']:.2%}",
     )
 
@@ -191,20 +204,11 @@ if "results" in st.session_state:
     left, right = st.columns(2)
 
     with left:
-
         st.subheader("🔍 Classical Linear Search")
 
-        st.write(
-            f"**Target found:** {classical['found']}"
-        )
-
-        st.write(
-            f"**Target index:** {classical['index']}"
-        )
-
-        st.write(
-            f"**Comparisons:** {classical['comparisons']}"
-        )
+        st.write(f"**Target found:** {classical['found']}")
+        st.write(f"**Target index:** {classical['index']}")
+        st.write(f"**Comparisons:** {classical['comparisons']}")
 
         st.write(
             f"**Measured runtime:** "
@@ -216,24 +220,12 @@ if "results" in st.session_state:
         )
 
     with right:
-
         st.subheader("⚛️ Quantum Grover Search")
 
-        st.write(
-            f"**Target:** {results['target']}"
-        )
-
-        st.write(
-            f"**Grover iterations:** {quantum['iterations']}"
-        )
-
-        st.write(
-            f"**Circuit depth:** {quantum['circuit_depth']}"
-        )
-
-        st.write(
-            f"**Gate count:** {quantum['gate_count']}"
-        )
+        st.write(f"**Target:** {results['target']}")
+        st.write(f"**Grover iterations:** {quantum['iterations']}")
+        st.write(f"**Circuit depth:** {quantum['circuit_depth']}")
+        st.write(f"**Gate count:** {quantum['gate_count']}")
 
         st.write(
             f"**Simulator runtime:** "
@@ -241,8 +233,91 @@ if "results" in st.session_state:
         )
 
         st.caption(
-            "Grover's algorithm provides O(√N) query complexity "
-            "for unstructured search with one marked target."
+            "Grover's algorithm provides O(√N) oracle-query "
+            "complexity for unstructured search with one marked target."
+        )
+
+    st.divider()
+
+    # ------------------------------------------------------
+    # IDEAL VS NOISY COMPARISON
+    # ------------------------------------------------------
+
+    st.header("🧪 Ideal vs Noisy Quantum Search")
+
+    ideal_probability = ideal_details["target_probability"]
+    noisy_probability = quantum_details["target_probability"]
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric(
+        "Ideal Success Probability",
+        f"{ideal_probability:.2%}",
+    )
+
+    col2.metric(
+        "Noisy Success Probability",
+        f"{noisy_probability:.2%}",
+    )
+
+    col3.metric(
+        "Noise Probability",
+        f"{experiment_noise:.1%}",
+    )
+
+    probability_difference = noisy_probability - ideal_probability
+
+    st.write(
+        f"Observed probability difference: "
+        f"**{probability_difference:+.2%}**"
+    )
+
+    comparison_df = pd.DataFrame(
+        {
+            "Simulation": ["Ideal", "Noisy"],
+            "Target Success Probability": [
+                ideal_probability,
+                noisy_probability,
+            ],
+        }
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 4))
+
+    bars = ax.bar(
+        comparison_df["Simulation"],
+        comparison_df["Target Success Probability"],
+    )
+
+    ax.set_title("Ideal vs Noisy Grover Search")
+    ax.set_ylabel("Observed Target Success Probability")
+    ax.set_ylim(0, 1.05)
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
+
+    ax.bar_label(
+        bars,
+        labels=[
+            f"{value:.2%}"
+            for value in comparison_df["Target Success Probability"]
+        ],
+        padding=3,
+    )
+
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
+
+    st.caption(
+        "Both simulations use the same target, qubit count, and shot count. "
+        "The ideal and noisy simulations use separate random measurement "
+        "samples, so observed differences can include sampling variation."
+    )
+
+    with st.expander("View probability comparison data"):
+        st.dataframe(
+            comparison_df,
+            use_container_width=True,
+            hide_index=True,
         )
 
     st.divider()
@@ -253,10 +328,8 @@ if "results" in st.session_state:
 
     st.header("📈 Quantum Measurement Distribution")
 
-    counts = quantum["measurement_counts"]
+    counts = quantum_details["counts"]
 
-    # Include every possible bitstring, even if it was never
-    # observed during measurement.
     all_states = [
         format(state, f"0{experiment_qubits}b")
         for state in range(experiment_states)
@@ -290,7 +363,6 @@ if "results" in st.session_state:
         probability_df["State"] == target_bitstring
     )
 
-    # Display probabilities for all possible states.
     fig, ax = plt.subplots(figsize=(12, 5))
 
     bar_colors = [
@@ -304,37 +376,23 @@ if "results" in st.session_state:
         color=bar_colors,
     )
 
-    ax.set_title(
-        "Grover Search Measurement Probabilities"
-    )
-
+    ax.set_title("Grover Search Measurement Probabilities")
     ax.set_xlabel("Measured Quantum State")
     ax.set_ylabel("Probability")
     ax.set_ylim(0, 1.05)
-
-    ax.tick_params(
-        axis="x",
-        rotation=45,
-    )
-
-    ax.grid(
-        axis="y",
-        linestyle="--",
-        alpha=0.3,
-    )
+    ax.tick_params(axis="x", rotation=45)
+    ax.grid(axis="y", linestyle="--", alpha=0.3)
 
     fig.tight_layout()
-
     st.pyplot(fig)
     plt.close(fig)
 
     st.caption(
-        "Green represents the target state. Blue represents "
-        "other states. States with zero measurements are also shown."
+        "Green represents the target state. Blue represents other states. "
+        "States with zero measurements are also shown."
     )
 
     with st.expander("View measurement data"):
-
         st.dataframe(
             probability_df,
             use_container_width=True,
@@ -349,10 +407,8 @@ if "results" in st.session_state:
 
     st.header("🔬 Quantum Circuit")
 
-    circuit = quantum_details["circuit"]
-
     st.code(
-        circuit.draw(output="text"),
+        quantum_details["circuit"].draw(output="text"),
         language="text",
     )
 
@@ -371,7 +427,7 @@ if "results" in st.session_state:
     st.divider()
 
     # ------------------------------------------------------
-    # EXPERIMENT RESULTS EXPORT
+    # EXPORT EXPERIMENT RESULTS
     # ------------------------------------------------------
 
     st.header("📥 Export Experiment Results")
@@ -385,15 +441,27 @@ if "results" in st.session_state:
                 "Comparisons": classical["comparisons"],
                 "Grover Iterations": None,
                 "Success Probability": None,
+                "Noise Probability": None,
                 "Runtime Seconds": classical["runtime_seconds"],
             },
             {
-                "Algorithm": "Quantum Grover Search",
+                "Algorithm": "Ideal Grover Search",
                 "Search Space": results["num_states"],
                 "Target": results["target"],
                 "Comparisons": None,
-                "Grover Iterations": quantum["iterations"],
-                "Success Probability": quantum["target_probability"],
+                "Grover Iterations": ideal_details["iterations"],
+                "Success Probability": ideal_probability,
+                "Noise Probability": 0.0,
+                "Runtime Seconds": None,
+            },
+            {
+                "Algorithm": "Noisy Grover Search",
+                "Search Space": results["num_states"],
+                "Target": results["target"],
+                "Comparisons": None,
+                "Grover Iterations": quantum_details["iterations"],
+                "Success Probability": noisy_probability,
+                "Noise Probability": experiment_noise,
                 "Runtime Seconds": quantum["runtime_seconds"],
             },
         ]
@@ -418,16 +486,19 @@ if "results" in st.session_state:
     # SCIENTIFIC NOTE
     # ------------------------------------------------------
 
-    st.subheader("🧪 Important Scientific Note")
+    st.subheader("🧪 Important Scientific Notes")
 
     st.info(
         """
-        Grover's algorithm provides a quadratic improvement in
-        oracle-query complexity for unstructured search.
-
-        Simulator execution time is not evidence of quantum
-        hardware speedup. Circuit construction, simulation,
-        measurement, and hardware execution have different costs.
+        - Grover's algorithm provides a quadratic improvement in
+          oracle-query complexity for unstructured search.
+        - The noise model simulates depolarizing errors on selected
+          single-qubit gates. It does not represent every physical
+          quantum-device error.
+        - Noise can affect the probability of measuring the target,
+          but finite-shot sampling also causes variation between runs.
+        - Simulator execution time is not evidence of quantum
+          hardware speedup.
         """
     )
 
@@ -448,6 +519,7 @@ else:
 
         - 🔍 Classical linear search
         - ⚛️ Grover's quantum search
+        - 🧪 Ideal versus noisy quantum simulations
         - 📊 Quantum measurement probabilities
         - 🔬 Quantum-circuit structure
         - 📈 Theoretical query complexity
@@ -472,8 +544,6 @@ st.markdown(
     """
 )
 
-# Generate theoretical scaling data independently of the
-# selected experiment.
 scaling_data = generate_scaling_data(
     min_qubits=2,
     max_qubits=10,
@@ -505,30 +575,18 @@ ax.plot(
 
 ax.set_xlabel("Search Space Size (N)")
 ax.set_ylabel("Comparisons / Oracle Iterations")
-
-ax.set_title(
-    "Theoretical Search Complexity"
-)
-
+ax.set_title("Theoretical Search Complexity")
 ax.set_xscale("log", base=2)
 ax.set_yscale("log", base=2)
-
-ax.grid(
-    True,
-    which="both",
-    linestyle="--",
-    alpha=0.3,
-)
-
+ax.grid(True, which="both", linestyle="--", alpha=0.3)
 ax.legend()
 
 fig.tight_layout()
-
 st.pyplot(fig)
 plt.close(fig)
 
 st.caption(
-    "The two curves show theoretical query counts, not execution times. "
+    "These curves show theoretical query counts, not execution times. "
     "The classical curve uses worst-case comparisons."
 )
 
